@@ -7,6 +7,7 @@ This is a helpful agent that can control your computer based on your commands. H
 - **Get system information:** Ask about your computer's CPU usage, memory, etc.
 - **Screen analysis:** The agent can analyze what's on your screen, recognize elements, and interact with applications based on visual content.
 - **Write and fix code:** It can generate code in different languages and help fix errors in your code when you're in VSCode.
+- **Generate PowerPoint presentations:** Create professional presentations automatically with modern designs and save them to your Downloads folder.
 - **Write stories and content:** Ask it to write stories or other text content for you.
 - **Play music/videos on YouTube:** Tell it what you want to watch or listen to on YouTube.
 - **Schedule tasks:** Set up reminders or schedule the agent to perform tasks at specific times.
@@ -155,6 +156,39 @@ set volume to 50
 set brightness to 75
 ```
 
+### Presentation Generation
+```bash
+# Create a presentation with default settings
+create presentation about artificial intelligence
+
+# Create a presentation with a specific title
+make presentation titled "Business Strategy" about marketing
+
+# Specify number of slides
+generate powerpoint about climate change with 10 slides
+```
+
+The presentation generator includes:
+- Modern slide designs and layouts
+- Automatic content generation based on the topic
+- Professional formatting and styling
+- Images relevant to the content
+- Automatic saving to your Downloads folder
+- Interactive viewing options (automatically opens when requested)
+
+**Presentation commands:**
+- `create presentation about [topic]` - Generate a presentation about any topic
+- `make presentation titled [title] about [topic]` - Create with specific title
+- `generate powerpoint about [topic] with [number] slides` - Specify slide count
+- `yes` - Open the presentation after generation
+
+**Features:**
+- Presentations are automatically saved to your Downloads folder
+- Modern and professional slide designs
+- Comprehensive content generation
+- Relevant images and visual elements
+- Interactive viewing experience
+
 ## System Control Features
 
 The agent provides advanced system control capabilities:
@@ -242,5 +276,5 @@ Common commands:
 - `write [content type] about [topic]` - Generates written content
 - `system info` - Shows information about your computer system
 - `email [address] that [message]` - Sends an email
-- `schedule [task] at [time]` - Schedules a task
+- `schedule [task] at [time]`
 - `analyze screen` - Analyzes current screen content 

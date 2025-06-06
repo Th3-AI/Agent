@@ -42,6 +42,18 @@ from pycaw.pycaw import AudioUtilities, IAudioEndpointVolume
 import winreg
 import requests
 from bs4 import BeautifulSoup
+import requests
+from pathlib import Path
+import sys
+import io
+import time
+import json
+from pptx import Presentation
+from pptx.util import Inches, Pt
+from pptx.enum.text import PP_ALIGN, MSO_ANCHOR
+from pptx.dml.color import RGBColor
+from pptx.enum.shapes import MSO_SHAPE
+import re
 
 # Configure API keys
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY", "AIzaSyB0XSUK7f3LhjG9i2n8frZSB4nrKAgLEg0")
@@ -1555,11 +1567,550 @@ def create_youtube_playlist(name: str, videos: List[str]) -> str:
         print(f"Error creating playlist: {e}")
         return f"Error creating playlist: {str(e)}"
 
+def hex_to_rgb(hex_color):
+    """Convert hex color to RGB."""
+    hex_color = hex_color.lstrip('#')
+    return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
+
+def download_image(url):
+    """Download image from URL."""
+    try:
+        response = requests.get(url)
+        if response.status_code == 200:
+            return io.BytesIO(response.content)
+        return None
+    except:
+        return None
+
+def apply_slide_style(slide, slide_data):
+    """Apply enhanced styling to the slide."""
+    # Get background color
+    bg_color = slide_data.get('backgroundColor', '#FFFFFF')
+    
+    # Apply background
+    background = slide.background
+    fill = background.fill
+    
+    # Handle gradient backgrounds
+    bg_image = slide_data.get('backgroundImage')
+    if bg_image and bg_image.startswith('linear-gradient'):
+        colors = re.findall(r'#[0-9A-Fa-f]{6}', bg_image)
+        if len(colors) >= 2:
+            # Create a subtle gradient effect
+            fill.gradient()
+            fill.gradient_stops[0].color.rgb = RGBColor(*hex_to_rgb(colors[0]))
+            fill.gradient_stops[1].color.rgb = RGBColor(*hex_to_rgb(colors[1]))
+            fill.gradient_angle = 45
+    else:
+        # Solid background
+        fill.solid()
+        r, g, b = hex_to_rgb(bg_color)
+        fill.fore_color.rgb = RGBColor(r, g, b)
+    
+    # Apply theme-specific enhancements
+    theme = slide_data.get('theme', 'light')
+    if theme == 'dark':
+        # For dark theme, ensure text is light
+        slide_data['textColor'] = slide_data.get('textColor', '#FFFFFF')
+        # Add subtle pattern or texture
+        if hasattr(slide.background.fill, 'pattern'):
+            slide.background.fill.pattern = True
+            slide.background.fill.pattern_fore_color.rgb = RGBColor(40, 40, 40)
+    
+    # Add slide number if not title slide
+    if slide_data.get('layout') != 'title':
+        slide_number = slide.shapes.add_textbox(
+            Inches(12), Inches(7),  # Position at bottom-right
+            Inches(0.5), Inches(0.3)
+        )
+        number_text = slide_number.text_frame.add_paragraph()
+        number_text.text = str(slide.slide_id)
+        number_text.alignment = PP_ALIGN.RIGHT
+        number_text.font.size = Pt(10)
+        number_text.font.color.rgb = RGBColor(*hex_to_rgb(slide_data.get('textColor', '#000000')))
+
+def apply_text_style(text_frame, slide_data, is_title=False):
+    """Apply text styling with improved alignment and spacing."""
+    for paragraph in text_frame.paragraphs:
+        # Alignment
+        if is_title:
+            paragraph.alignment = PP_ALIGN.CENTER
+        else:
+            paragraph.alignment = slide_data.get('alignment', PP_ALIGN.LEFT)
+        
+        # Line spacing
+        paragraph.line_spacing = 1.2
+        
+        # Font family
+        font_family = slide_data.get('fontFamily', 'Calibri')
+        # Font size with better defaults
+        if is_title:
+            font_size = int(float(slide_data.get('titleFontSize', '44').replace('rem', '')) * 12)
+        else:
+            font_size = int(float(slide_data.get('contentFontSize', '28').replace('rem', '')) * 12)
+        # Text color
+        text_color = slide_data.get('textColor', '#000000')
+        r, g, b = hex_to_rgb(text_color)
+        
+        for run in paragraph.runs:
+            run.font.name = font_family
+            run.font.size = Pt(font_size)
+            run.font.color.rgb = RGBColor(r, g, b)
+            run.font.bold = slide_data.get('bold', False)
+
+def create_pptx_from_slides(slides_data, output_path):
+    """Create a PowerPoint presentation with clean, modern layouts."""
+    prs = Presentation()
+    
+    # Set 16:9 aspect ratio
+    prs.slide_width = Inches(13.333)
+    prs.slide_height = Inches(7.5)
+    
+    for slide_data in slides_data:
+        # Always use blank layout for consistency
+        slide = prs.slides.add_slide(prs.slide_layouts[6])  # Blank layout
+        
+        # Apply slide styling
+        apply_slide_style(slide, slide_data)
+        
+        # Add title with improved positioning
+        title = slide_data.get('title', '')
+        if title:
+            title_box = slide.shapes.add_textbox(
+                left=Inches(0.5),
+                top=Inches(0.4),
+                width=Inches(12.333),
+                height=Inches(1.2)
+            )
+            title_frame = title_box.text_frame
+            title_frame.word_wrap = True
+            title_frame.paragraphs[0].alignment = PP_ALIGN.CENTER
+            
+            p = title_frame.paragraphs[0]
+            p.text = title
+            p.font.size = Pt(44)
+            p.font.bold = True
+            if slide_data.get('textColor'):
+                r, g, b = hex_to_rgb(slide_data.get('textColor'))
+                p.font.color.rgb = RGBColor(r, g, b)
+        
+        # Get or generate content
+        content = slide_data.get('content', '')
+        if not content and slide.slide_id > 1:  # If no content and not title slide
+            # Generate default content based on title
+            content = f"• Key Points about {title}:\n"
+            content += "  - Understanding the fundamentals and core concepts\n"
+            content += "  - Exploring practical applications and use cases\n"
+            content += "  - Analyzing impact and future implications\n"
+            content += "  - Best practices and implementation strategies"
+        
+        # Handle content and image placement
+        image_url = slide_data.get('imageUrl')
+        
+        if image_url and content and slide.slide_id > 1:  # Both image and content for non-title slides
+            # Content on left - moved up slightly
+            content_box = slide.shapes.add_textbox(
+                left=Inches(0.6),
+                top=Inches(1.5),  # Moved up from 1.8
+                width=Inches(5.8),
+                height=Inches(5)
+            )
+            content_frame = content_box.text_frame
+            content_frame.word_wrap = True
+            
+            # Add content with proper formatting
+            first = True
+            for point in content.split('\n'):
+                if not point.strip():
+                    continue
+                
+                p = content_frame.add_paragraph()
+                if not first:
+                    p.space_before = Pt(12)
+                first = False
+                
+                # Format bullet points properly
+                if point.startswith('  -'):  # Sub-bullet
+                    p.text = point.replace('  -', '•')
+                    p.level = 1
+                    p.space_before = Pt(6)
+                else:  # Main bullet
+                    p.text = point.strip('• ')
+                    if not point.startswith('•'):
+                        p.text = '• ' + p.text
+                    p.level = 0
+                
+                p.font.size = Pt(24)
+                if slide_data.get('textColor'):
+                    r, g, b = hex_to_rgb(slide_data.get('textColor'))
+                    p.font.color.rgb = RGBColor(r, g, b)
+            
+            # Image on right - moved down slightly
+            try:
+                image_data = download_image(image_url)
+                if image_data:
+                    picture = slide.shapes.add_picture(
+                        image_data,
+                        left=Inches(6.8),
+                        top=Inches(2.1),  # Moved down from 1.8
+                        width=Inches(5.8),
+                        height=Inches(4.2)
+                    )
+            except Exception as e:
+                print(f"Warning: Failed to add image: {str(e)}")
+                
+        elif slide.slide_id == 1:  # Title slide
+            # Center content for title slide
+            if content:
+                subtitle_box = slide.shapes.add_textbox(
+                    left=Inches(0.8),
+                    top=Inches(2.5),  # Adjusted for better spacing
+                    width=Inches(11.733),
+                    height=Inches(2)
+                )
+                subtitle_frame = subtitle_box.text_frame
+                subtitle_frame.word_wrap = True
+                
+                p = subtitle_frame.add_paragraph()
+                p.text = content
+                p.alignment = PP_ALIGN.CENTER
+                p.font.size = Pt(28)
+                if slide_data.get('textColor'):
+                    r, g, b = hex_to_rgb(slide_data.get('textColor'))
+                    p.font.color.rgb = RGBColor(r, g, b)
+            
+            # Add image at the bottom for title slide
+            if image_url:
+                try:
+                    image_data = download_image(image_url)
+                    if image_data:
+                        picture = slide.shapes.add_picture(
+                            image_data,
+                            left=Inches(3.666),
+                            top=Inches(3.8),  # Adjusted for better spacing
+                            width=Inches(6),
+                            height=Inches(3.2)
+                        )
+                except Exception as e:
+                    print(f"Warning: Failed to add image: {str(e)}")
+        
+        else:  # Only content, no image or title slide
+            content_box = slide.shapes.add_textbox(
+                left=Inches(1),
+                top=Inches(1.5),  # Moved up slightly
+                width=Inches(11.333),
+                height=Inches(5)
+            )
+            content_frame = content_box.text_frame
+            content_frame.word_wrap = True
+            
+            # Add content with proper formatting
+            first = True
+            for point in content.split('\n'):
+                if not point.strip():
+                    continue
+                
+                p = content_frame.add_paragraph()
+                if not first:
+                    p.space_before = Pt(12)
+                first = False
+                
+                # Format bullet points properly
+                if point.startswith('  -'):  # Sub-bullet
+                    p.text = point.replace('  -', '•')
+                    p.level = 1
+                    p.space_before = Pt(6)
+                else:  # Main bullet
+                    p.text = point.strip('• ')
+                    if not point.startswith('•'):
+                        p.text = '• ' + p.text
+                    p.level = 0
+                
+                p.font.size = Pt(28)
+                if slide_data.get('textColor'):
+                    r, g, b = hex_to_rgb(slide_data.get('textColor'))
+                    p.font.color.rgb = RGBColor(r, g, b)
+        
+        # Add slide number (except for title slide)
+        if slide.slide_id > 1:
+            slide_number = slide.shapes.add_textbox(
+                left=Inches(12.333),
+                top=Inches(6.9),
+                width=Inches(0.5),
+                height=Inches(0.3)
+            )
+            number_text = slide_number.text_frame.add_paragraph()
+            number_text.text = str(slide.slide_id)
+            number_text.alignment = PP_ALIGN.RIGHT
+            number_text.font.size = Pt(12)
+            if slide_data.get('textColor'):
+                r, g, b = hex_to_rgb(slide_data.get('textColor'))
+                number_text.font.color.rgb = RGBColor(r, g, b)
+    
+    # Save the presentation
+    prs.save(output_path)
+    return True
+
+def generate_presentation(
+    title="My Presentation",
+    topic="Artificial Intelligence",
+    theme_id="modern",
+    slide_count=7,
+    api_url="http://localhost:5000/api/generate-slides"
+):
+    """
+    Generate a PowerPoint presentation using the PresentationMaster API.
+    """
+    
+    # Get the Downloads folder path based on the operating system
+    if platform.system() == "Windows":
+        downloads_path = os.path.join(os.path.expanduser("~"), "Downloads")
+    elif platform.system() == "Darwin":  # macOS
+        downloads_path = os.path.join(os.path.expanduser("~"), "Downloads")
+    else:  # Linux
+        downloads_path = os.path.join(os.path.expanduser("~"), "Downloads")
+    
+    # Create Downloads directory if it doesn't exist
+    if not os.path.exists(downloads_path):
+        os.makedirs(downloads_path)
+    
+    # Request headers
+    headers = {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+    }
+    
+    # Request data with enhanced styling and content requirements
+    data = {
+        'title': title,
+        'topic': topic,
+        'themeId': theme_id,
+        'slideCount': slide_count,
+        'format': 'pptx',
+        'style': {
+            'theme': 'dark',
+            'colorScheme': 'professional',
+            'includeImages': True,
+            'imageStyle': 'modern',
+            'layout': 'modern'
+        },
+        'content': {
+            'type': 'detailed',  # Request detailed content
+            'style': 'professional',
+            'depth': 'comprehensive',  # Request comprehensive content
+            'includeExamples': True,
+            'includeStats': True
+        },
+        'images': {
+            'required': True,  # Make images mandatory
+            'style': 'modern',
+            'type': 'relevant',  # Request topic-relevant images
+            'minWidth': 800,  # Request high-quality images
+            'minHeight': 600
+        }
+    }
+
+    try:
+        print(f"\nSending request to: {api_url}")
+        print(f"Request data: {json.dumps(data, indent=2)}")
+        
+        # Make the request
+        response = requests.post(api_url, json=data, headers=headers)
+        
+        print(f"Response status code: {response.status_code}")
+        
+        # Check if request was successful
+        if response.status_code == 200:
+            try:
+                # Parse the JSON response
+                response_data = response.json()
+                
+                # Check if we got proper response structure
+                if not isinstance(response_data, (list, dict)):
+                    print("\nError: Invalid response format from server")
+                    return None
+                
+                # Convert to list if single slide
+                slides_data = response_data if isinstance(response_data, list) else [response_data]
+                
+                if not slides_data:
+                    print("\nError: No slides data in response")
+                    return None
+                
+                # Verify each slide has required content
+                for slide in slides_data:
+                    if not isinstance(slide, dict):
+                        continue
+                        
+                    # Ensure each slide has an image URL if not title slide
+                    if slide.get('layout') != 'title' and not slide.get('imageUrl'):
+                        # Add default image URL for the topic if none provided
+                        slide['imageUrl'] = f"https://source.unsplash.com/1600x900/?{topic.replace(' ', ',')}"
+                    
+                    # Ensure content is detailed enough
+                    if 'content' in slide and isinstance(slide['content'], str):
+                        content = slide['content']
+                        if len(content.split('\n')) < 3:  # If content is too brief
+                            # Add more detailed content
+                            content_lines = content.split('\n')
+                            enhanced_content = []
+                            for line in content_lines:
+                                if line.strip():
+                                    enhanced_content.append(line)
+                                    # Add supporting details for each point
+                                    if not line.endswith(':'):
+                                        enhanced_content.append(f"  - Detailed explanation: {line}")
+                                        enhanced_content.append(f"  - Example: Implementation in {topic}")
+                            slide['content'] = '\n'.join(enhanced_content)
+                
+                print(f"\nProcessing {len(slides_data)} slides")
+                
+                # Generate filename with timestamp
+                timestamp = time.strftime("%Y%m%d_%H%M%S")
+                safe_title = title.replace(' ', '_').replace('/', '_').replace('\\', '_')
+                filename = f"{safe_title}_{timestamp}.pptx"
+                output_path = Path(os.path.join(downloads_path, filename))
+                
+                # Create the PowerPoint file
+                if create_pptx_from_slides(slides_data, output_path):
+                    print(f"\nPresentation successfully saved as: {filename}")
+                    
+                    # Verify file size
+                    file_size = output_path.stat().st_size
+                    print(f"File size: {file_size:,} bytes ({file_size/1024:.2f} KB)")
+                    
+                    return output_path.absolute()
+                else:
+                    print("\nError: Failed to create PowerPoint file")
+                    return None
+                    
+            except json.JSONDecodeError:
+                print("\nError: Failed to parse JSON response")
+                print(f"Response content: {response.text[:500]}")
+                return None
+                
+        elif response.status_code == 500:
+            try:
+                error_data = response.json()
+                print(f"\nServer Error: {json.dumps(error_data, indent=2)}")
+            except:
+                print(f"\nServer Error: {response.text[:500]}")
+            return None
+            
+        else:
+            print(f"\nUnexpected status code: {response.status_code}")
+            try:
+                print(f"Response: {json.dumps(response.json(), indent=2)}")
+            except:
+                print(f"Response text: {response.text[:500]}")
+            return None
+            
+    except Exception as e:
+        print(f"\nError: {str(e)}")
+        return None
+
+if __name__ == '__main__':
+    # Example usage with dark theme
+    presentation_path = generate_presentation(
+        title="AI in Healthcare",
+        topic="Applications of Artificial Intelligence in Modern Healthcare",
+        theme_id="dark",  # Using dark theme
+        slide_count=7
+    )
+    
+    if presentation_path:
+        print(f"\nFinal presentation saved at: {presentation_path}")
+        if presentation_path.exists():
+            size = presentation_path.stat().st_size
+            print(f"Final file size: {size:,} bytes ({size/1024:.2f} KB)")
+            print("PowerPoint file created successfully with images and styling!")
+            print("\nYou can now open the presentation in Microsoft PowerPoint")
+
 def process_command(command: str, is_voice_mode=False) -> str:
     """Process user commands using AI to understand and execute the request."""
     try:
         global memory
         
+        # Handle YouTube search commands first
+        if "youtube" in command.lower() or "search" in command.lower():
+            # Extract search query
+            search_query = command.lower()
+            # Remove common words only when they appear as standalone words
+            common_words = ["search", "on", "youtube", "for", "play"]
+            for word in common_words:
+                # Use word boundaries to ensure we only match whole words
+                search_query = re.sub(r'\b' + word + r'\b', '', search_query)
+            # Clean up any extra spaces
+            search_query = ' '.join(search_query.split())
+            
+            if search_query:
+                try:
+                    search_url = f"https://www.youtube.com/results?search_query={search_query.replace(' ', '+')}"
+                    webbrowser.open(search_url)
+                    return f"I've opened YouTube and searched for '{search_query}'"
+                except Exception as e:
+                    print(f"Error searching YouTube: {e}")
+                    return f"I had trouble searching YouTube for '{search_query}'. Please try again."
+            else:
+                return "Please specify what you'd like to search for on YouTube."
+
+        # Direct presentation command parsing
+        if any(word in command.lower() for word in ["presentation", "powerpoint", "ppt"]) and \
+           any(word in command.lower() for word in ["create", "make", "generate"]):
+            # Extract title if specified
+            title = "My Presentation"
+            title_match = re.search(r"titled ['\"](.*?)['\"]", command)
+            if title_match:
+                title = title_match.group(1)
+            
+            # Extract topic (everything after "about")
+            topic = "General Topic"
+            if "about" in command.lower():
+                topic = command.lower().split("about")[-1].strip()
+            
+            # Extract slide count if specified
+            slide_count = 7
+            count_match = re.search(r"(\d+)\s*slides?", command)
+            if count_match:
+                slide_count = int(count_match.group(1))
+            
+            try:
+                print(f"Generating presentation: Title='{title}', Topic='{topic}', Slides={slide_count}")
+                presentation_path = generate_presentation(
+                    title=title,
+                    topic=topic,
+                    theme_id="modern",
+                    slide_count=slide_count
+                )
+                
+                if presentation_path:
+                    # Store the path in memory for later use
+                    memory.add_topic_memory("last_presentation_path", str(presentation_path))
+                    return f"I've created your presentation about {topic}! Would you like to take a look at it? (Yes/No)\nThe presentation is saved at: {presentation_path}"
+                else:
+                    return "I encountered an issue while creating the presentation. Please try again."
+            except Exception as e:
+                print(f"Error generating presentation: {e}")
+                return "I had trouble creating the presentation. Please try again."
+        
+        # Handle viewing the last generated presentation
+        if any(word in command.lower() for word in ["yes", "yeah", "sure", "okay", "ok", "yep", "please"]):
+            last_ppt_path = memory.get_topic_memory("last_presentation_path")
+            if last_ppt_path and os.path.exists(last_ppt_path):
+                try:
+                    if platform.system() == "Windows":
+                        os.startfile(last_ppt_path)
+                    elif platform.system() == "Darwin":  # macOS
+                        subprocess.Popen(["open", last_ppt_path])
+                    else:  # Linux
+                        subprocess.Popen(["xdg-open", last_ppt_path])
+                    return "I've opened the presentation for you!"
+                except Exception as e:
+                    print(f"Error opening presentation: {e}")
+                    return f"The presentation is located at: {last_ppt_path}"
+            else:
+                return "I couldn't find the last generated presentation. Please try generating a new one."
+
         # Handle system control commands
         if "volume" in command.lower():
             if "set" in command.lower() or "change" in command.lower():
@@ -2040,6 +2591,60 @@ def process_command(command: str, is_voice_mode=False) -> str:
                         results.append(send_email(to_email, subject, body, attachments))
                     else:
                         results.append("Please provide an email address to send to.")
+                
+                # Handle PowerPoint generation requests
+                elif ("create" in action or "make" in action or "generate" in action) and ("presentation" in action or "powerpoint" in action or "ppt" in action):
+                    title = params.get("title", "My Presentation")
+                    topic = params.get("topic", details if details else "General Topic")
+                    theme = params.get("theme", "modern")
+                    slide_count = params.get("slides", 7)
+                    
+                    try:
+                        # Generate the presentation
+                        presentation_path = generate_presentation(
+                            title=title,
+                            topic=topic,
+                            theme_id=theme,
+                            slide_count=slide_count
+                        )
+                        
+                        if presentation_path:
+                            # Store the path in memory for later use
+                            memory.add_topic_memory("last_presentation_path", str(presentation_path))
+                            
+                            # Ask if user wants to view the presentation
+                            results.append(f"I've created your presentation about {topic}! Would you like to take a look at it? (Yes/No)")
+                            results.append(f"The presentation is saved at: {presentation_path}")
+                        else:
+                            results.append("I encountered an issue while creating the presentation. Please try again.")
+                    except Exception as e:
+                        print(f"Error generating presentation: {e}")
+                        results.append("I had trouble creating the presentation. Please try again.")
+                
+                # Handle viewing the last generated presentation
+                elif any(word in action.lower() for word in ["view", "open", "show", "see"]) and any(word in action.lower() for word in ["presentation", "powerpoint", "ppt"]):
+                    # Check if this is a response to the "would you like to take a look" question
+                    is_yes_response = any(word in command.lower() for word in ["yes", "yeah", "sure", "okay", "ok", "yep", "please"])
+                    
+                    if is_yes_response:
+                        # Try to get the last presentation path from memory
+                        last_ppt_path = memory.get_topic_memory("last_presentation_path")
+                        if last_ppt_path and os.path.exists(last_ppt_path):
+                            try:
+                                if platform.system() == "Windows":
+                                    os.startfile(last_ppt_path)
+                                elif platform.system() == "Darwin":  # macOS
+                                    subprocess.Popen(["open", last_ppt_path])
+                                else:  # Linux
+                                    subprocess.Popen(["xdg-open", last_ppt_path])
+                                results.append("I've opened the presentation for you!")
+                            except Exception as e:
+                                print(f"Error opening presentation: {e}")
+                                results.append(f"The presentation is located at: {last_ppt_path}")
+                        else:
+                            results.append("I couldn't find the last generated presentation. Please try generating a new one.")
+                    else:
+                        results.append("No problem! The presentation is saved and you can view it later.")
                 
                 # Execute system command directly
                 elif "command" in action or "execute" in action or "run" in action:
