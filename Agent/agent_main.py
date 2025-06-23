@@ -63,10 +63,10 @@ os.environ["GOOGLE_API_KEY"] = GOOGLE_API_KEY
 
 # Email configuration
 EMAIL_CONFIG = {
-    "smtp_server": os.getenv("SMTP_SERVER", "smtp.gmail.com"),
-    "smtp_port": int(os.getenv("SMTP_PORT", "587")),
-    "sender_email": os.getenv("SENDER_EMAIL", "skillvox.ai@gmail.com"),
-    "sender_password": os.getenv("SENDER_PASSWORD", "mmna lnue kjol baqy"),
+    "smtp_server": os.getenv("SMTP_SERVER"),
+    "smtp_port": int(os.getenv("SMTP_PORT"),
+    "sender_email": os.getenv("SENDER_EMAIL"),
+    "sender_password": os.getenv("SENDER_PASSWORD"),
     "use_tls": True
 }
 
