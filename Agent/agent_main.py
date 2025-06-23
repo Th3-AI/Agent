@@ -54,6 +54,8 @@ from pptx.enum.text import PP_ALIGN, MSO_ANCHOR
 from pptx.dml.color import RGBColor
 from pptx.enum.shapes import MSO_SHAPE
 import re
+import base64
+from urllib.parse import quote_plus
 
 # Configure API keys
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY", "AIzaSyB0XSUK7f3LhjG9i2n8frZSB4nrKAgLEg0")
@@ -1856,8 +1858,8 @@ def generate_presentation(
     topic="Artificial Intelligence",
     theme_id="modern",
     slide_count=7,
-    api_url="http://localhost:5000/api/generate-slides"
-):
+    api_url="https://slideforge.onrender.com/api/generate-slides"
+):  
     """
     Generate a PowerPoint presentation using the PresentationMaster API.
     """
@@ -2009,6 +2011,50 @@ def generate_presentation(
         print(f"\nError: {str(e)}")
         return None
 
+def generate_and_open_image(prompt: str) -> str:
+    """Generate an image using Pollinations.ai and automatically open it.
+    
+    Args:
+        prompt: The text description of the image to generate
+        
+    Returns:
+        str: Status message indicating success or failure
+    """
+    try:
+        # URL encode the prompt
+        encoded_prompt = quote_plus(prompt)
+        
+        # Construct the Pollinations.ai URL
+        url = f"https://image.pollinations.ai/prompt/{encoded_prompt}"
+        
+        # Download the image
+        response = requests.get(url, stream=True)
+        if response.status_code != 200:
+            return f"Error: Failed to generate image. Status code: {response.status_code}"
+
+        # Create a temporary file to save the image
+        temp_dir = tempfile.gettempdir()
+        temp_image_path = os.path.join(temp_dir, f"generated_image_{int(time.time())}.png")
+        
+        # Save the image
+        with open(temp_image_path, 'wb') as f:
+            for chunk in response.iter_content(chunk_size=8192):
+                if chunk:
+                    f.write(chunk)
+        
+        # Open the image using the default image viewer
+        if platform.system() == 'Windows':
+            os.startfile(temp_image_path)
+        elif platform.system() == 'Darwin':  # macOS
+            subprocess.run(['open', temp_image_path])
+        else:  # Linux
+            subprocess.run(['xdg-open', temp_image_path])
+            
+        return f"Image generated and opened successfully! Saved at: {temp_image_path}"
+        
+    except Exception as e:
+        return f"Error generating image: {str(e)}"
+
 if __name__ == '__main__':
     # Example usage with dark theme
     presentation_path = generate_presentation(
@@ -2030,6 +2076,15 @@ def process_command(command: str, is_voice_mode=False) -> str:
     """Process user commands using AI to understand and execute the request."""
     try:
         global memory
+        
+        # Handle image generation commands
+        if "generate image" in command.lower() or "create image" in command.lower():
+            # Extract the prompt from the command
+            prompt_match = re.search(r"(?:generate|create) image (?:of |showing |with |about )?(.*)", command)
+            if prompt_match:
+                prompt = prompt_match.group(1).strip()
+                return generate_and_open_image(prompt)
+            return "Please provide a description of the image you want to generate."
         
         # Handle YouTube search commands first
         if "youtube" in command.lower() or "search" in command.lower():

@@ -7,7 +7,7 @@ import { styled } from '@mui/material/styles';
 import axios from 'axios';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
-const API_BASE = '/api';
+const API_BASE = 'http://0.0.0.0:8001/api';
 
 const GlassBox = styled(Paper)(({ theme }) => ({
   background: 'rgba(30, 40, 60, 0.7)',
