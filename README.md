@@ -2,6 +2,8 @@
 
 This is a helpful agent that can control your computer based on your commands. Here are some things it can do:
 
+[![Watch on YouTube](https://img.youtube.com/vi/WXqU2j746OM/hqdefault.jpg)](https://youtu.be/WXqU2j746OM)
+
 - **Open websites and search online:** Just tell it the website you want to visit or what you want to search for.
 - **Open applications:** You can ask it to open apps like Notepad, Chrome, or other applications on your system.
 - **Get system information:** Ask about your computer's CPU usage, memory, etc.
